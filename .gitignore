@@ -4,6 +4,8 @@
 /orders-svc/orders-svc
 **/*.test
 **/coverage.out
+/lab/results/
+
 
 # local secrets
 .env

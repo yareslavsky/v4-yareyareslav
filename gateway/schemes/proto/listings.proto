@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package marketplace.catalog.v1;
+
+option go_package = "marketplace/gen/catalogpb";
+
+import "google/protobuf/timestamp.proto";
+
+service Catalog {
+  rpc Create(CreateRequest) returns
+}
+
+message Listing {
+  string id = 1;
+  string seller_id = 2;
+  string title = 3;
+  int64 price_minor = 4;
+  int64 stock = 5;
+  int64 sold = 6;
+  google.protobuf.timestamp created_at = 7;
+}
+
+message CreateRequest {
+  string seller_id = 1;
+  string title = 2;
+  int64 price_minor = 3;
+  int64 stock = 4;
+}
+
+message CreateResponse {
+  Listing listing = 1;
+}
+
+message GetRequest {
+  string id = 1;
+}
+
+message ListRequest {
+  int64 limit = 1;
+  int64 offset = 
+}

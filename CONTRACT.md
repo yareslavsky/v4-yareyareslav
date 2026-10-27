@@ -24,7 +24,8 @@
 
 Форматы: `DATABASE_URL=postgres://user:pass@host:port/db?sslmode=…` (локальный compose с `sslmode=disable`, Neon требует `sslmode=require`, код про это не знает), `REDIS_URL=redis://host:6379`, `KAFKA_BROKERS=host:9092[,host2:9092]`, `*_GRPC_ADDR=host:port` без схемы. Локальные значения лежат в `.env.example`, `make setup` копирует его в `.env`.
 
-Сервис с базой сначала накатывает миграции (версионированные, с таблицей версий) и только потом начинает слушать. gateway начинает отвечать на `/healthz` только когда сам готов; тесты ждут `/healthz` до 90 секунд.
+Сервис сyt
+^&олько потом начинает слушать. gateway начинает отвечать на `/healthz` только когда сам готов; тесты ждут `/healthz` до 90 секунд.
 
 ## HTTP (gateway)
 
@@ -270,7 +271,8 @@ X-Total-Count: 42
 
 ```
 Catalog:  Create, Get, List, Update, Delete
-          Reserve(listing_id, qty) → remaining        // атомарно, FOR UPDATE
+          Reserve(listing_id, qty, reservation_id) → remaining
+          ReleaseReservation(reservation_id) → Empty
 Orders:   Create(buyer_id, listing_id, qty, idempotency_key) → Order
           List(buyer_id, limit, offset) → items, total
 ```
@@ -285,6 +287,9 @@ Orders:   Create(buyer_id, listing_id, qty, idempotency_key) → Order
 - `List` возвращает `total` для `X-Total-Count`.
 - Оба сервиса регистрируют стандартный `grpc.health.v1.Health`; gateway опрашивает его на `/healthz`.
 - Коды: `Reserve` при нехватке остатка `FailedPrecondition`. `Get`/`Update`/`Delete` неизвестного id `NotFound`. Чужой листинг в `Update`/`Delete` `PermissionDenied`. Невалидный ввод `InvalidArgument`. Как они превращаются в HTTP, в таблице выше.
+- orders-svc перед `Reserve` сохраняет `reservation_sagas` и передаёт UUID резерва. Повторный `Reserve` с тем же UUID и параметрами не списывает сток повторно; другие параметры или уже освобождённый резерв дают `FailedPrecondition`. Пустой `reservation_id` поддерживается для старых клиентов без гарантий компенсации.
+- `ReleaseReservation` атомарно возвращает сохранённое количество в stock и отмечает резерв освобождённым. Повтор безопасен. Отмена неизвестного UUID сохраняет запись, запрещающую запоздавший `Reserve` с этим UUID.
+- Заказ, outbox и завершение saga коммитятся одной транзакцией orders-svc. При ошибке выполняется компенсация с отдельным контекстом до 2 секунд. Незавершённые saga подбирает фоновый воркер, включая после рестарта: первая фоновая попытка через 10 секунд, последующие неуспешные попытки также через 10 секунд. Заблокированные текущими запросами операции пропускаются. Ключ идемпотентности освобождается только после компенсации и только для этой saga. Завершённые записи saga сохраняются для различения результатов неоднозначного `COMMIT`.
 - `seller_id` и `buyer_id` в запросы кладёт gateway из JWT: gRPC-сервисы токен не разбирают и gateway доверяют. Это внутренняя сеть, и это вопрос 4 на собеседовании.
 - `Get` отдаёт состояние кэша в response header `x-cache` (metadata), gateway превращает его в `X-Cache`.
 - `Orders.Create` при повторе по ключу отдаёт header `x-idempotent-replay: true`, gateway превращает его в `Idempotent-Replayed: true` и статус `200`.
